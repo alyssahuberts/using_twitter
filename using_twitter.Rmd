@@ -1,0 +1,155 @@
+---
+title: "Gathering and Using Twitter Data"
+author: "Alyssa Huberts"
+date: "2/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(gt)
+library(readxl)
+```
+
+## Introduction
+This page is a summary of what I’ve learned in using R for Twitter data. It doesn’t claim to be exhaustive or solve all problems; it’s just meant to reduce fixed costs in looking all this stuff up yourself. I hope it’s helpful!
+
+
+
+## Accessing Twitter Data
+The process that people refer to as "scraping Twitter" can actually be decomposed into two different types of tasks, depending on what you start with. In the first case, you know which users' information you're looking for or the Tweet ID's of the tweets you want to find. (This is most common when academics share "dehydrated" Twitter databases among themselves). This process is somewhat analogous to trying to find a lost pet by calling its name. In the second case, you're truly "searching"; either by a keyword, a location, or some other identifying information, to see what tweets are out there. This is more like looking for four-leaf clovers.
+
+### Case 1: Receiving a Database of Dehydrated Tweets
+
+Twitter enforces a policy called the "Right to Be Forgotten", which means that users have the right to delete their own content. Thus, according to the technical terms of use of the Twitter API, anyone who has used the api to collect tweets cannot share the database directly; they can only share the Tweet IDs. So if, for example, I want all geotagged tweets from Venezuela, and the University of Salzburg has a database of all geotagged tweets, they can pass me the Tweet IDs, but legally, should not pass the content of those tweets.  Often, people don't know these rules or ignore them. It's best practice to rehydrate the tweets anyway to make sure you're not including deleted tweets in your database. 
+
+There are a number of interactive "point and click" platforms that you can use to rehydrate tweets (I like [Hydrator](https://github.com/DocNow/hydrator) the best). But it's worth knowing that there is no magic going on in hydrator; they're just making calls to the twitter api based on the ``tweet_id`` you provide and repopulating the information that's available from twitter. 
+
+## Case 2 (More Common): Calling the Twitter API directly 
+### Breaking down the Twitter API: What can I get for free?
+Twitter has three tiers of API access: standard, premium, and enterprise. **Standard** access is free, and allows users to search the entire Twitterverse for up to the past 7 days, subject to rate limits. If you want to go back further in time, you'll need either the tweet id or the user screen name. The **premium** API costs about $100 a month has two endpoints; a 30-day window and a full-archive search window. The main advantage of the full archive api is that you are not limited in how far back your "search tweets" request can go, and you get more tweets per request (500 instead of 200 on the standard). But you do have monthly total numbers of requests (which you don't have for the standard api). 
+
+In general, if you don't need historical data, and/or you have the users' screen names or tweet id's for the tweets that you're interested in, you're likely best off using the standard API, unless you have money to burn. The premium is best used for historical searches where you can't know the tweet id's or user screen names ahead of time. 
+
+### Using Rtweet
+There are a number of packages that you can use to access Twitter data from R. I like Rtweet the best,  but [this](https://rtweet.info/) Rtweet website breaks down the functionalities of each site and provides some useful definitions. 
+
+The core functionalities of Rtweet are:
+
+ * **search_tweets** for a certain hashtag, user, or, if geocode is specified, location
+ * **ts_plot** in-the-box function that plots tweet density over time 
+ * **stream_tweets** captures a live stream of 1% of all tweets for a fixed amount of seconds (timeout)
+ * **get_friends** captures all the accounts that a user follows
+ * **get_followers** captures all the accounts that follow a user
+ * **get_favorites** captures all the tweets favorited by a given user or list of users 
+ * **get_trends** captures what is currently trending
+
+The [rtweet package page](https://rtweet.info/}{rtweet package) has lots of helpful information on this.
+
+### Dealing with Rate Limits and Maximum Requests
+
+The language about rate limits and maximum number of requests can be quite confusing. A *rate limit* is the amount of *requests* that a user with a specific access token can make in a certain amount of time. Don't confuse requests with lines of code- Rtweet breaks your call into requests that are within Twitter's size limit, so a single line of code may be executing dozens of requests. As of this writing (`r date() `), the rate limits are the following:
+
+```{r rate_limits, echo = FALSE}
+ tibble(command = c("search_tweets", "stream_tweets", "get_timeline"), limit = c("900 requests x 100 tweets x request every 15 minutes", "1% of all tweets for designated time_period", "3200 per user per 15 minutes" )) %>% 
+  gt() %>% tab_header(title = "Rate Limits for Rtweet commands") %>% 
+  cols_label(command = "Command", limit = "Rate Limit")
+```
+
+Note that in addition to these time-moderated limits, R has limits on how far back you can call certain commands. For example, with the standard api one can only call the most recent 3200 tweets for a screen name using get_timeline (Beyond that, you would need the ``tweet_id`` or to use the premium api).
+
+I like [this page](https://developer.twitter.com/en/docs/tweets/search/guides/standard-operators) for understanding how searches will be processed. 
+
+## What kind of content does Twitter data contain?
+```{r variables, echo = FALSE}
+vars <- read_excel("useful_vars.xlsx")
+vars %>% filter(Type == "identifying"| Type == "profile") %>%
+  select(Variable, Description) %>% 
+  gt() %>% tab_style(
+    style = list(
+      cell_fill(color = "lightcyan")
+      ),
+    locations = cells_body()) %>%
+  tab_header(title = "Identifying Information About the Tweet or User ")
+
+vars %>% filter(Type == "geo"| Variable == "location") %>%
+  select(Variable, Description) %>% 
+  gt() %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "lightblue")
+      ),
+    locations = cells_body()) %>% 
+  tab_header(title = "Geographic Location")
+
+vars %>% filter(Type == "relationships") %>%
+  select(Variable, Description) %>% 
+  gt() %>% 
+    tab_style(
+    style = list(
+      cell_fill(color = "lightcyan")
+      ),
+    locations = cells_body()) %>% 
+  tab_header(title = "Relationships/Engagement with Other Users")
+
+vars %>% filter(Type == "stats"| Type == "time") %>%
+  select(Variable, Description) %>% 
+  gt() %>% 
+    tab_style(
+    style = list(
+      cell_fill(color = "lightblue")
+      ),
+    locations = cells_body()) %>% 
+  tab_header(title = "Statistics about the Tweet")
+
+```
+
+## Setting up the Twitter API
+
+It is no longer necessary to obtain a developer account and create your own Twitter application to use Twitter’s API, but I've found personally that it's a lot more intuitive if you do.  Regardless of how you plan to use Twitter data, it's a good idea to get a free key and access token to the twitter api. You can request these at the [Twitter Developer website](\href{https://developer.twitter.com/en/account/get-started)
+
+Most people using the Twitter API are using it to develop apps (for example, to stream their tweets on their website or to allow people to tweet from their app). Don't be too confused by this language. You can think of an "app" as being a project. 
+
+Start by [creating an app](https://developer.twitter.com/en/apps/create}). You'll need to fill out information about your project and how the information that you collect will be used. 
+
+Once you've created your app, in the apps page, there will be a tab called ``keys and tokens``. Keys and tokens are used for the ``handshake'' in your call to the api so that Twitter can keep track of who is making the call. You'll need to generate both consumer API keys (API key and API secret key) and an access token and access token secret. You can regenerate these keys and tokens at any time, but you'll need to update your code accordingly. If you're using version control like Github, it's best practice to store your api keys in your R environment, rather than directly in your scripts. 
+
+If any of this is unclear, [this](https://rtweet.info/articles/auth.html) is a great vignette that walks you through setting up your api step by step. 
+
+If you're not using version control, you can set up your api keys at the beginning of your script. My code looks like this:
+
+```{r setup_api, eval = FALSE}
+\begin{lstlisting}[language=R]
+########################
+#API setup 
+########################
+## store api keys 
+app_name <- YOUR APP NAME
+api_key <- YOUR API KEY
+api_secret_key <- YOUR API SECRET KEY
+consumer_key = api_key
+consumer_secret = api_secret_key
+access_token <- YOUR ACCESS TOKEN
+access_token_secret <- YOUR SECRET ACCESS TOKEN
+token <- create_token(app =app_name, consumer_key = api_key,
+consumer_secret = api_secret_key, access_secret= access_token_secret,
+access_token = access_token)
+#note- this does this in browser; slightly annoying but fine
+
+## save token to home directory
+path_to_token <- file.path(path.expand("~"), ".twitter_token.rds")
+saveRDS(token, path_to_token)
+
+## create env variable TWITTER_PAT (with path to saved token)
+env_var <- paste0("TWITTER_PAT=", path_to_token)
+## save as .Renviron file (or append if the file already exists)
+cat(env_var, file = file.path(path.expand("~"), ".Renviron"),  fill = TRUE, append = TRUE)
+readRenviron("~/.Renviron")
+```
+
+The first time you set this up, the api will log in through your browser. There are ways to get around this, but since it's only once, I just went with it. 
+
+A lot of people have issues with setup because they haven't fully filled out information on their Twitter Developer page. [This page](https://rtweet.info/articles/FAQ.html) provides great troubleshooting. 
+
+
